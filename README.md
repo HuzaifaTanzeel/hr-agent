@@ -147,9 +147,6 @@ This system includes explicit guardrails to prevent prompt injection, unauthoriz
 - **Deterministic Tool Execution**  
   HR actions such as leave applications are handled by backend services, not by the LLM itself.
 
-- **LLM as a Reasoning Layer Only**  
-  The LLM does not directly write to databases or execute business logic.
-
 - **Out-of-Scope Detection**  
   Queries that attempt to override system behavior, access unauthorized data, or manipulate prompts are rejected or safely redirected.
 
@@ -246,4 +243,5 @@ With additional time, the following enhancements could be implemented:
 * Authentication and role-based access control
 * Policy versioning and incremental re-ingestion
 * Evaluation metrics for RAG accuracy
+* Efficient Context Management for a single conversation session
 * Observability (logging, tracing, token usage)
