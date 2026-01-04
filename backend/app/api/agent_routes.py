@@ -103,14 +103,17 @@ async def chat_with_agent(
     summary="End conversation",
     description="Mark a conversation as completed"
 )
-async def end_conversation_endpoint(conversation_id: str):
+async def end_conversation_endpoint(
+    conversation_id: str,
+    db: AsyncSession = Depends(get_db)
+):
     """
     End a conversation session.
 
     This marks the conversation as completed. No more messages can be sent
     in this conversation after calling this endpoint.
     """
-    success = await end_conversation(conversation_id)
+    success = await end_conversation(db, conversation_id)
 
     if not success:
         raise HTTPException(
@@ -123,15 +126,21 @@ async def end_conversation_endpoint(conversation_id: str):
     "/conversations",
     response_model=ConversationListResponse,
     summary="List conversations",
-    description="Get all conversations, optionally filtered by person_id"
+    description="Get all conversations, optionally filtered by employee_id"
 )
-async def list_conversations(person_id: Optional[int] = None):
+async def list_conversations(
+    employee_id: Optional[int] = None,
+    db: AsyncSession = Depends(get_db)
+):
     """
     List all conversations.
 
-    Optionally filter by person_id to get conversations for a specific person.
+    Optionally filter by employee_id to get conversations for a specific employee.
     """
-    conversations = await conversation_manager.list_conversations(person_id=person_id)
+    conversations = await conversation_manager.list_conversations(
+        db=db,
+        employee_id=employee_id
+    )
 
     return ConversationListResponse(
         conversations=conversations,
@@ -145,9 +154,12 @@ async def list_conversations(person_id: Optional[int] = None):
     summary="Get conversation details",
     description="Get details of a specific conversation"
 )
-async def get_conversation_details(conversation_id: str):
+async def get_conversation_details(
+    conversation_id: str,
+    db: AsyncSession = Depends(get_db)
+):
     """Get details of a specific conversation"""
-    conversation = await conversation_manager.get_conversation(conversation_id)
+    conversation = await conversation_manager.get_conversation(db, conversation_id)
 
     if not conversation:
         raise HTTPException(
@@ -164,16 +176,74 @@ async def get_conversation_details(conversation_id: str):
     summary="Cleanup old conversations",
     description="Remove conversations older than specified hours"
 )
-async def cleanup_conversations(hours: int = 24):
+async def cleanup_conversations(
+    hours: int = 24,
+    db: AsyncSession = Depends(get_db)
+):
     """
     Cleanup old conversations.
 
     Removes conversations that haven't had activity for the specified number of hours.
     Default: 24 hours
     """
-    count = await conversation_manager.cleanup_old_conversations(hours=hours)
+    count = await conversation_manager.cleanup_old_conversations(db=db, hours=hours)
 
     return {
         "message": f"Cleaned up {count} old conversations",
         "removed": count
     }
+
+
+@router.get(
+    "/conversations/{conversation_id}/messages",
+    response_model=List[dict],
+    summary="Get conversation messages",
+    description="Get all messages for a specific conversation in sequence"
+)
+async def get_conversation_messages(
+    conversation_id: str,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get all messages for a conversation.
+    
+    Messages are returned in sequence order (by sequence_number and created_at).
+    """
+    messages = await conversation_manager.get_messages(db, conversation_id)
+    
+    if not messages:
+        # Check if conversation exists
+        conversation = await conversation_manager.get_conversation(db, conversation_id)
+        if not conversation:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Conversation {conversation_id} not found"
+            )
+    
+    return messages
+
+
+@router.get(
+    "/employees/{employee_id}/conversations",
+    response_model=ConversationListResponse,
+    summary="Get employee conversations",
+    description="Get all conversations for a specific employee"
+)
+async def get_employee_conversations(
+    employee_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get all conversations for an employee.
+    
+    Returns conversations ordered by last activity (most recent first).
+    """
+    conversations = await conversation_manager.list_conversations(
+        db=db,
+        employee_id=employee_id
+    )
+    
+    return ConversationListResponse(
+        conversations=conversations,
+        total=len(conversations)
+    )

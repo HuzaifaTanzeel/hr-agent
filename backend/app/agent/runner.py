@@ -56,18 +56,26 @@ async def run_hr_agent(
     try:
         # Step 1: Get or create conversation
         if conversation_id:
-            conversation = await conversation_manager.get_conversation(conversation_id)
+            conversation = await conversation_manager.get_conversation(db, conversation_id)
             if not conversation:
                 logger.warning(f"   ⚠️  Conversation {conversation_id} not found, creating new")
                 conversation = await conversation_manager.create_conversation(
-                    person_id=person_id,
+                    db=db,
                     employee_id=employee_id
                 )
         else:
             conversation = await conversation_manager.create_conversation(
-                person_id=person_id,
+                db=db,
                 employee_id=employee_id
             )
+        
+        # Save user message to database
+        await conversation_manager.save_message(
+            db=db,
+            conversation_id=conversation.conversation_id,
+            sender_type="USER",
+            content=message
+        )
 
         # Step 2: Classify intent
         intent = await classify_intent(message)
@@ -141,15 +149,24 @@ async def run_hr_agent(
         # Step 8: Extract response
         response = result.final_output
 
-        # Step 9: Update conversation
-        await conversation_manager.update_activity(conversation.conversation_id)
+        # Step 9: Save assistant response to database
+        await conversation_manager.save_message(
+            db=db,
+            conversation_id=conversation.conversation_id,
+            sender_type="ASSISTANT",
+            content=response.message,
+            intent=intent
+        )
+
+        # Step 10: Update conversation activity
+        await conversation_manager.update_activity(db, conversation.conversation_id)
 
         logger.info(f"✅ Agent execution completed successfully")
         logger.info(f"   Success: {response.success}")
         logger.info(f"   Message: {response.message[:100]}...")
         logger.info("="*60)
 
-        # Step 10: Return structured response
+        # Step 11: Return structured response
         return {
             "conversation_id": conversation.conversation_id,
             "success": response.success,
@@ -168,9 +185,10 @@ async def run_hr_agent(
         
         try:
             if conversation_id:
-                conversation = await conversation_manager.get_conversation(conversation_id)
+                conversation = await conversation_manager.get_conversation(db, conversation_id)
                 if conversation:
                     await conversation_manager.update_status(
+                        db,
                         conversation_id,
                         ConversationStatus.FAILED
                     )
@@ -179,11 +197,12 @@ async def run_hr_agent(
                 # Create a conversation for error tracking
                 try:
                     error_conversation = await conversation_manager.create_conversation(
-                        person_id=person_id,
+                        db=db,
                         employee_id=employee_id
                     )
                     error_conversation_id = error_conversation.conversation_id
                     await conversation_manager.update_status(
+                        db,
                         error_conversation_id,
                         ConversationStatus.FAILED
                     )
@@ -205,11 +224,12 @@ async def run_hr_agent(
         }
 
 
-async def end_conversation(conversation_id: str) -> bool:
+async def end_conversation(db: AsyncSession, conversation_id: str) -> bool:
     """
     Mark a conversation as completed.
 
     Args:
+        db: Database session
         conversation_id: Conversation ID to end
 
     Returns:
@@ -217,6 +237,7 @@ async def end_conversation(conversation_id: str) -> bool:
     """
     logger.info(f"🏁 Ending conversation: {conversation_id}")
     success = await conversation_manager.update_status(
+        db,
         conversation_id,
         ConversationStatus.COMPLETED
     )
