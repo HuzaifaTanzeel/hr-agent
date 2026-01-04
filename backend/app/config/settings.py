@@ -11,10 +11,10 @@ class Settings(BaseSettings):
     # Application
     APP_NAME: str = "HR AI Agent API"
     VERSION: str = "1.0.0"
-    DEBUG: bool = False
+    DEBUG: bool = True
     
     # Database
-    DATABASE_URL: str = "postgresql+asyncpg://user:password@localhost:5432/hr_ai_agent"
+    DATABASE_URL: str = "postgresql+asyncpg://admin:admin123@localhost:5432/hr_agent"
     
     # You can override this with environment variable:
     # DATABASE_URL=postgresql+asyncpg://username:password@host:port/database
@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         case_sensitive = True
+        extra = "ignore"  # Ignore extra environment variables
 
 
 settings = Settings()
