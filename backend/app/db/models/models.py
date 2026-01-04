@@ -35,7 +35,6 @@ class Person(Base):
     auth_user = relationship("AuthUser", back_populates="person", uselist=False)
     employee = relationship("Employee", back_populates="person", uselist=False)
     roles = relationship("PersonRole", back_populates="person")
-    conversations = relationship("Conversation", back_populates="person")
     approvals = relationship("LeaveApproval", back_populates="approver")
 
 
@@ -107,6 +106,7 @@ class Employee(Base):
     manager = relationship("Employee", remote_side=[id], backref="subordinates")
     leave_balances = relationship("LeaveBalance", back_populates="employee")
     leave_requests = relationship("LeaveRequest", back_populates="employee")
+    conversations = relationship("Conversation", back_populates="employee", foreign_keys="Conversation.employee_id")
 
 
 # =========================
@@ -198,17 +198,19 @@ class LeaveApproval(Base):
 class Conversation(Base):
     __tablename__ = "conversation"
 
-    id = Column(Integer, primary_key=True, index=True)
-    person_id = Column(Integer, ForeignKey("person.id", ondelete="CASCADE"), nullable=False)
+    conversation_id = Column(String(36), primary_key=True)  # UUID string as primary key
+    employee_id = Column(Integer, ForeignKey("employee.id", ondelete="CASCADE"), nullable=False, index=True)
     started_at = Column(DateTime(timezone=True), server_default=func.now())
+    last_activity = Column(DateTime(timezone=True), server_default=func.now())
     status = Column(String(20), default="ACTIVE")
+    turn_count = Column(Integer, default=0)
 
     __table_args__ = (
-        CheckConstraint("status IN ('ACTIVE', 'CLOSED')", name="check_conversation_status"),
+        CheckConstraint("status IN ('ACTIVE', 'COMPLETED', 'FAILED', 'CLOSED')", name="check_conversation_status"),
     )
 
-    person = relationship("Person", back_populates="conversations")
-    messages = relationship("Message", back_populates="conversation")
+    employee = relationship("Employee", foreign_keys=[employee_id])
+    messages = relationship("Message", back_populates="conversation", order_by="Message.created_at")
 
 
 # =========================
@@ -218,10 +220,11 @@ class Message(Base):
     __tablename__ = "message"
 
     id = Column(Integer, primary_key=True, index=True)
-    conversation_id = Column(Integer, ForeignKey("conversation.id", ondelete="CASCADE"), nullable=False)
+    conversation_id = Column(String(36), ForeignKey("conversation.conversation_id", ondelete="CASCADE"), nullable=False, index=True)
     sender_type = Column(String(20), nullable=False)
     content = Column(Text, nullable=False)
     intent = Column(String(50))
+    sequence_number = Column(Integer, nullable=False)  # Order of messages in conversation
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     __table_args__ = (
