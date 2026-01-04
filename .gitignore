@@ -160,3 +160,18 @@ dmypy.json
 
 # Cython debug symbols
 cython_debug/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/build/
+frontend/.vite/
+frontend/.env
+frontend/.env.local
+frontend/.env.*.local
+frontend/.local/
+frontend/.replit
+frontend/replit.md
+frontend/server/
+frontend/script/
+frontend/attached_assets/

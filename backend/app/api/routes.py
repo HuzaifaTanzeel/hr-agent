@@ -13,7 +13,8 @@ from app.api.schemas import (
 )
 from app.services.leave_service import LeaveService, LeaveServiceException
 from app.db.repositories.leave_repository import (
-    LeaveRequestRepository, LeaveBalanceRepository, LeaveTypeRepository
+    LeaveRequestRepository, LeaveBalanceRepository, LeaveTypeRepository,
+    EmployeeRepository
 )
 
 router = APIRouter()
@@ -67,6 +68,47 @@ async def create_leave_request(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An error occurred while processing your request"
+        )
+
+
+@router.get(
+    "/leave-requests",
+    response_model=List[dict],
+    summary="Get all leave requests (HR view)"
+)
+async def get_all_leave_requests(
+    skip: int = 0,
+    limit: int = 100,
+    db: AsyncSession = Depends(get_db)
+):
+    """Get all leave requests across all employees (for HR portal)"""
+    try:
+        # Get all employees first
+        employees = await EmployeeRepository.get_all(db, skip=0, limit=1000)
+        
+        # Get leave requests for all employees
+        all_requests = []
+        for employee in employees:
+            requests = await LeaveService.get_leave_requests(
+                db=db,
+                employee_id=employee.id,
+                skip=0,
+                limit=1000
+            )
+            # Add employee_id to each request for HR view
+            for req in requests:
+                req['employee_id'] = employee.id
+            all_requests.extend(requests)
+        
+        # Sort by created_at descending
+        all_requests.sort(key=lambda x: x.get('created_at', ''), reverse=True)
+        
+        return all_requests[skip:skip+limit]
+    
+    except LeaveServiceException as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
         )
 
 
