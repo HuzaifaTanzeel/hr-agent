@@ -16,5 +16,11 @@ python-dotenv
 
 # Utilities
 email-validator
+markdown
+
+# RAG and Embeddings
+sentence-transformers
+chromadb
+torch  # Required by sentence-transformers
 
 openai-agents

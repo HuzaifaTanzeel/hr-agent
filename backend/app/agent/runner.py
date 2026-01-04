@@ -12,6 +12,7 @@ from app.agent.hr_agent import hr_agent
 from app.agent.intent_classifier import classify_intent
 from app.agent.conversation_manager import conversation_manager, ConversationStatus
 from app.config.agent_config import MAX_TURNS
+from app.rag.rag_manager import rag_manager
 
 logger = logging.getLogger(__name__)
 
@@ -71,9 +72,39 @@ async def run_hr_agent(
         # Step 2: Classify intent
         intent = await classify_intent(message)
 
-        # Step 3: Prepare agent context
+        # Step 3: Retrieve policy context if this is a policy question
+        policy_context = ""
+        if intent == "POLICY_QUESTION":
+            try:
+                retrieval_service = rag_manager.get_retrieval_service()
+                chunks = retrieval_service.retrieve(query=message, top_k=3)
+                
+                if chunks:
+                    policy_context = retrieval_service.format_context(chunks)
+                    logger.info(f"📚 Retrieved {len(chunks)} policy chunks for context")
+                else:
+                    logger.warning("⚠️  No policy chunks retrieved")
+                    policy_context = "No relevant policy information found in the knowledge base."
+            except Exception as e:
+                logger.error(f"❌ Error retrieving policy context: {str(e)}")
+                policy_context = "Unable to retrieve policy information at this time."
+
+        # Step 4: Prepare agent context
         # Add current date and employee context to the message
-        context_message = f"""[Context]
+        if policy_context:
+            context_message = f"""[Context]
+- Date: {datetime.now().strftime('%Y-%m-%d')}
+- Employee ID: {employee_id}
+- Person ID: {person_id}
+
+[Relevant Policy Information]
+{policy_context}
+
+[User Message]
+{message}
+"""
+        else:
+            context_message = f"""[Context]
 - Date: {datetime.now().strftime('%Y-%m-%d')}
 - Employee ID: {employee_id}
 - Person ID: {person_id}
@@ -82,11 +113,11 @@ async def run_hr_agent(
 {message}
 """
 
-        # Step 4: Setup memory session
+        # Step 5: Setup memory session
         # This maintains context across turns within the conversation
         session = SQLiteSession(session_id=conversation.conversation_id)
 
-        # Step 5: Inject database session into agent context
+        # Step 6: Inject database session into agent context
         # The tools need this to access the database
         # We'll pass it via the context
         agent_context = {
@@ -98,7 +129,7 @@ async def run_hr_agent(
 
         logger.info(f"🤖 Running agent (intent: {intent})...")
 
-        # Step 6: Run agent
+        # Step 7: Run agent
         result = await Runner.run(
             hr_agent,
             context_message,
@@ -107,10 +138,10 @@ async def run_hr_agent(
             context=agent_context  # Pass db and context
         )
 
-        # Step 7: Extract response
+        # Step 8: Extract response
         response = result.final_output
 
-        # Step 8: Update conversation
+        # Step 9: Update conversation
         await conversation_manager.update_activity(conversation.conversation_id)
 
         logger.info(f"✅ Agent execution completed successfully")
@@ -118,7 +149,7 @@ async def run_hr_agent(
         logger.info(f"   Message: {response.message[:100]}...")
         logger.info("="*60)
 
-        # Step 9: Return structured response
+        # Step 10: Return structured response
         return {
             "conversation_id": conversation.conversation_id,
             "success": response.success,

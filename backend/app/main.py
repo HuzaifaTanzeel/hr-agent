@@ -12,6 +12,8 @@ from app.api.routes import router
 from app.api.agent_routes import router as agent_router
 from app.db.session import engine
 from app.db.models.models import Base
+from app.rag.rag_manager import rag_manager
+from pathlib import Path
 
 # Configure logging
 logging.basicConfig(
@@ -42,6 +44,35 @@ async def lifespan(app: FastAPI):
     logger.info(f"   Database: {settings.DATABASE_URL.split('@')[1] if '@' in settings.DATABASE_URL else 'configured'}")
     logger.info(f"   Debug Mode: {settings.DEBUG}")
     logger.info("="*60)
+    
+    # Initialize RAG pipeline
+    try:
+        logger.info("📚 Initializing RAG pipeline...")
+        
+        # Find policy directory (handle both running from backend/ and root)
+        policy_dir = Path("docs/policies")
+        if not policy_dir.exists():
+            policy_dir = Path("backend/docs/policies")
+        if not policy_dir.exists():
+            policy_dir = Path("./docs/policies")
+        
+        # Initialize RAG manager
+        rag_manager.initialize(
+            collection_name="hr_policies",
+            persist_directory="./chroma_db",
+            embedding_model=None  # Uses default: all-MiniLM-L6-v2
+        )
+        
+        # Ensure documents are ingested
+        if policy_dir.exists():
+            rag_manager.ensure_ingested(str(policy_dir))
+            logger.info("✅ RAG pipeline ready")
+        else:
+            logger.warning(f"⚠️  Policy directory not found: {policy_dir}")
+            logger.warning("   RAG will work but no documents will be available until ingestion")
+    except Exception as e:
+        logger.error(f"❌ Failed to initialize RAG pipeline: {str(e)}", exc_info=True)
+        logger.warning("⚠️  Policy question answering may not work correctly")
     
     # Note: Don't auto-create tables in production
     # Use Alembic migrations instead
